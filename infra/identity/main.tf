@@ -19,11 +19,13 @@ locals {
       display_name      = "gh-${var.github_repo}-plan"
       subject           = "repo:${local.repo}:pull_request"
       subscription_role = "Reader"
+      state_role        = "Storage Blob Data Reader"
     }
     apply = {
       display_name      = "gh-${var.github_repo}-apply"
       subject           = "repo:${local.repo}:environment:${var.github_apply_environment}"
       subscription_role = "Contributor"
+      state_role        = "Storage Blob Data Contributor"
     }
   }
 }
@@ -78,7 +80,7 @@ resource "azurerm_role_assignment" "state" {
   for_each = local.identities
 
   scope                = local.state_container_scope
-  role_definition_name = "Storage Blob Data Contributor"
+  role_definition_name = each.value.state_role
   principal_id         = azuread_service_principal.github[each.key].object_id
   principal_type       = "ServicePrincipal"
 }

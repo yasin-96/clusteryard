@@ -5,7 +5,7 @@ terraform {
     storage_account_name = "sttfstate60kc1m"
     container_name       = "tfstate"
     key                  = "bootstrap/terraform.tfstate"
-  }  
+  }
   required_providers {
     azurerm = {
       source  = "hashicorp/azurerm"

@@ -8,6 +8,11 @@ variable "github_repo" {
   type        = string
 }
 
+variable "github_oidc_repo" {
+  description = "Repository as presented in the OIDC subject, including immutable IDs, e.g. owner@123/repo@456"
+  type        = string
+}
+
 variable "github_apply_environment" {
   description = "GitHub Environment (with required reviewers) that gates apply jobs."
   type        = string

@@ -8,7 +8,7 @@ data "azurerm_storage_account" "tfstate" {
 }
 
 locals {
-  repo = "${var.github_owner}/${var.github_repo}"
+  repo = var.github_oidc_repo
 
   # ARM scope of the state container (data plane roles are assigned here,
   # not on the whole storage account).

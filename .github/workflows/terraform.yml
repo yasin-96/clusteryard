@@ -1,0 +1,163 @@
+name: terraform
+
+on:
+  pull_request:
+    branches: [main]
+    # No paths filter here: the required check "terraform-plan" must report on
+    # every pull request, otherwise PRs without infra changes can never merge.
+  push:
+    branches: [main]
+    paths:
+      - "infra/**"
+      - ".github/workflows/terraform.yml"
+
+# Least privilege by default; jobs widen it only where needed.
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  TF_VERSION: "1.16.4"
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  ARM_USE_OIDC: "true"
+  ARM_USE_AZUREAD: "true" # backend uses Entra ID, not storage account keys
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+  # Every module under infra/ must be listed in exactly one of these lists.
+  # An unlisted module fails the plan job, so each new module forces a decision.
+
+  # Applied locally with `az login`, never by the pipeline.
+  # fmt-checked and validated here, but not planned or applied.
+  LOCAL_ONLY_MODULES: "infra/bootstrap infra/identity"
+
+  # Long-lived modules the pipeline applies on merge to main.
+  # ORDER MATTERS: dependencies first (for example dns before anything using it).
+  AUTO_APPLY_MODULES: ""
+
+  # Throwaway modules (cluster and everything on it). Planned on pull requests,
+  # but never applied on push: they are brought up and torn down on demand by a
+  # separate workflow_dispatch workflow, so a merge never recreates the cluster.
+  ON_DEMAND_MODULES: ""
+
+jobs:
+  plan:
+    name: terraform-plan # this is the name to add as a required status check
+    if: github.event_name == 'pull_request'
+    runs-on: ubuntu-latest
+    permissions:
+      id-token: write
+      contents: read
+    concurrency:
+      group: terraform-plan-${{ github.event.pull_request.number }}
+      cancel-in-progress: true
+    env:
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_PLAN }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID_PLAN }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: fmt, init, validate, plan
+        run: |
+          set -euo pipefail
+          in_list() { [[ " $2 " == *" $1 "* ]]; }
+
+          modules=$(find infra -name '*.tf' -not -path '*/.terraform/*' -exec dirname {} \; | sort -u)
+
+          for m in $modules; do
+            echo "::group::$m"
+            terraform -chdir="$m" fmt -check -diff
+
+            if in_list "$m" "$LOCAL_ONLY_MODULES"; then
+              terraform -chdir="$m" init -backend=false
+              terraform -chdir="$m" validate
+              echo "::notice title=$m::local-only module, plan skipped"
+            elif in_list "$m" "$AUTO_APPLY_MODULES $ON_DEMAND_MODULES"; then
+              terraform -chdir="$m" init
+              terraform -chdir="$m" validate
+              # Read-only identity: no state lock (it cannot write blobs).
+              terraform -chdir="$m" plan -lock=false -no-color | tee "$RUNNER_TEMP/plan.txt"
+              {
+                echo "### $m"
+                echo '```'
+                cat "$RUNNER_TEMP/plan.txt"
+                echo '```'
+              } >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "::error title=$m::module is not listed in LOCAL_ONLY_MODULES, AUTO_APPLY_MODULES or ON_DEMAND_MODULES"
+              exit 1
+            fi
+            echo "::endgroup::"
+          done
+
+  apply:
+    name: terraform-apply
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    environment: prod # required reviewers gate this job; OIDC subject = environment:prod
+    permissions:
+      id-token: write
+      contents: read
+    # Never run two applies at once; queued runs wait instead of being cancelled.
+    concurrency:
+      group: terraform-apply
+      cancel-in-progress: false
+    env:
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_APPLY }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID_APPLY }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: init, plan, apply (in listed order)
+        run: |
+          set -euo pipefail
+
+          if [[ -z "${AUTO_APPLY_MODULES// /}" ]]; then
+            echo "::notice::no modules listed in AUTO_APPLY_MODULES, nothing to apply"
+            exit 0
+          fi
+
+          # Deliberately iterates the list in order, not `find | sort`.
+          for m in $AUTO_APPLY_MODULES; do
+            echo "::group::$m"
+            terraform -chdir="$m" init
+            # Plan and apply the same saved plan, and keep the plan visible in the run.
+            terraform -chdir="$m" plan -out=tfplan -no-color | tee "$RUNNER_TEMP/plan.txt"
+            {
+              echo "### $m"
+              echo '```'
+              cat "$RUNNER_TEMP/plan.txt"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            terraform -chdir="$m" apply tfplan
+            rm -f "$m/tfplan"
+            echo "::endgroup::"
+          done

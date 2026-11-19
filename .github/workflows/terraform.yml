@@ -37,7 +37,7 @@ env:
 
   # Long-lived modules the pipeline applies on merge to main.
   # ORDER MATTERS: dependencies first (for example dns before anything using it).
-  AUTO_APPLY_MODULES: ""
+  AUTO_APPLY_MODULES: "infra/dns"
 
   # Throwaway modules (cluster and everything on it). Planned on pull requests,
   # but never applied on push: they are brought up and torn down on demand by a

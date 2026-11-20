@@ -33,7 +33,7 @@ env:
 
   # Applied locally with `az login`, never by the pipeline.
   # fmt-checked and validated here, but not planned or applied.
-  LOCAL_ONLY_MODULES: "infra/bootstrap infra/identity"
+  LOCAL_ONLY_MODULES: "infra/bootstrap infra/identity infra/cluster-identity"
 
   # Long-lived modules the pipeline applies on merge to main.
   # ORDER MATTERS: dependencies first (for example dns before anything using it).

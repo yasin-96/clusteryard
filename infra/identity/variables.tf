@@ -36,21 +36,3 @@ variable "state_container_name" {
   type        = string
   default     = "tfstate"
 }
-
-variable "network_resource_group_name" {
-  description = "Resource group of the cluster network (created in infra/network)."
-  type        = string
-  default     = "rg-network"
-}
-
-variable "vnet_name" {
-  description = "Virtual network of the cluster (created in infra/network)."
-  type        = string
-  default     = "vnet-clusteryard"
-}
-
-variable "aks_nodes_subnet_name" {
-  description = "AKS node subnet (created in infra/network)."
-  type        = string
-  default     = "snet-aks-nodes"
-}

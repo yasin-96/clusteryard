@@ -86,7 +86,7 @@ sie soll ihre eigenen Rechte nicht erweitern können. Im Workflow steht das Modu
 
 - `apply` kann alle Ressourcen im Abonnement ändern oder löschen (Contributor ist breit).
   Schutz bieten nur die Freigabe in `prod` und `prevent_destroy` an wichtigen Ressourcen
-  (State-Speicher, DNS-Zone).
+  (State-Speicher, DNS-Zone, Netzwerk; siehe ADR 0002).
 - `apply` kann **keine** Rollenzuweisungen anlegen. Sobald AKS, external-dns oder cert-manager
   Rollenzuweisungen brauchen, bekommt `apply` zusätzlich `Role Based Access Control Administrator`
   mit Bedingungen (nur bestimmte Rollen, nur an bestimmte Principal-Typen). Wird entschieden,

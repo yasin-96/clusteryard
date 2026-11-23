@@ -77,7 +77,7 @@ resource "azurerm_role_assignment" "subscription" {
   principal_type       = "ServicePrincipal"
 }
 
-# Both need to write the state lock (blob lease), hence Contributor on data plane.
+# Plan reads the state without a lock (-lock=false); apply writes state and lock.
 resource "azurerm_role_assignment" "state" {
   for_each = local.identities
 

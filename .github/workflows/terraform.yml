@@ -42,7 +42,7 @@ env:
   # Throwaway modules (cluster and everything on it). Planned on pull requests,
   # but never applied on push: they are brought up and torn down on demand by a
   # separate workflow_dispatch workflow, so a merge never recreates the cluster.
-  ON_DEMAND_MODULES: ""
+  ON_DEMAND_MODULES: "infra/cluster"
 
 jobs:
   plan:

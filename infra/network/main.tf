@@ -15,21 +15,25 @@ locals {
   }
 }
 
-# Own resource group: survives tearing down the cluster.
-resource "azurerm_resource_group" "network" {
-  name     = "rg-network"
-  location = local.location
-  tags     = local.tags
+# Own resource group: survives tearing down the cluster. It is created in
+# infra/identity, which also grants the pipeline Contributor on it.
+data "azurerm_resource_group" "network" {
+  name = "rg-network"
+}
+
+# Ownership moved to infra/identity: forget it here, do not delete it.
+removed {
+  from = azurerm_resource_group.network
 
   lifecycle {
-    prevent_destroy = true
+    destroy = false
   }
 }
 
 resource "azurerm_virtual_network" "main" {
   name                = "vnet-clusteryard"
-  location            = azurerm_resource_group.network.location
-  resource_group_name = azurerm_resource_group.network.name
+  location            = data.azurerm_resource_group.network.location
+  resource_group_name = data.azurerm_resource_group.network.name
   address_space       = ["10.0.0.0/16"]
   tags                = local.tags
 
@@ -42,7 +46,7 @@ resource "azurerm_virtual_network" "main" {
 # overlay CIDR, not from this subnet, so a /24 (251 usable IPs) is plenty.
 resource "azurerm_subnet" "aks_nodes" {
   name                 = "snet-aks-nodes"
-  resource_group_name  = azurerm_resource_group.network.name
+  resource_group_name  = data.azurerm_resource_group.network.name
   virtual_network_name = azurerm_virtual_network.main.name
   address_prefixes     = ["10.0.0.0/24"]
 

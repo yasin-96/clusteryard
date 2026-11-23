@@ -46,6 +46,13 @@ locals {
       role           = "DNS Zone Contributor"
       scope          = data.terraform_remote_state.dns.outputs.zone_id
     }
+    # The pipeline creates the cluster here; no write access elsewhere.
+    apply_contributor = {
+      principal_id   = data.azuread_service_principal.apply.object_id
+      principal_type = "ServicePrincipal"
+      role           = "Contributor"
+      scope          = azurerm_resource_group.aks.id
+    }
     # Kubernetes API access (Helm provider in infra/platform). Owner/Contributor
     # do not include Kubernetes data actions, so both need this explicitly.
     apply_cluster_admin = {

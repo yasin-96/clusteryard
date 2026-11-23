@@ -22,9 +22,11 @@ locals {
       state_role        = "Storage Blob Data Reader"
     }
     apply = {
-      display_name      = "gh-${var.github_repo}-apply"
-      subject           = "repo:${local.repo}:environment:${var.github_apply_environment}"
-      subscription_role = "Contributor"
+      display_name = "gh-${var.github_repo}-apply"
+      subject      = "repo:${local.repo}:environment:${var.github_apply_environment}"
+      # Read-only on the subscription; write access only on the clusteryard
+      # resource groups (resource_groups.tf, infra/cluster-identity).
+      subscription_role = "Reader"
       state_role        = "Storage Blob Data Contributor"
     }
   }
@@ -65,7 +67,7 @@ resource "azuread_application_federated_identity_credential" "github" {
 # Azure RBAC
 # ---------------------------------------------------------------------------
 
-# Plan: Reader, Apply: Contributor on the whole subscription (see ADR 0001).
+# Both read-only on the subscription (provider checks, data sources).
 resource "azurerm_role_assignment" "subscription" {
   for_each = local.identities
 

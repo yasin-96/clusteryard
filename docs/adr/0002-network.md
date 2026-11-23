@@ -2,6 +2,7 @@
 
 - Status: akzeptiert
 - Datum: 2026-11-20
+- Aktualisiert: 2026-11-23 (Ressourcengruppe gehört `infra/identity`, Cluster-Identitäten siehe ADR 0006)
 
 ## Kontext
 
@@ -12,12 +13,14 @@ neu entstehen. Gleichzeitig soll das Netzwerk nichts kosten, solange kein Cluste
 
 ## Entscheidungen
 
-### 1. Eigenes Modul `infra/network` mit eigener Ressourcengruppe
+### 1. Eigenes Modul `infra/network` in eigener Ressourcengruppe
 
 - Ressourcengruppe `rg-network`, State `network/terraform.tfstate`, Region `germanywestcentral`.
+- Die Ressourcengruppe legt `infra/identity` an, zusammen mit `Contributor` für die
+  Apply-Identität (ADR 0001). `infra/network` liest sie nur per Datenquelle.
 - Das Modul überlebt den Cluster-Abbau und steht in `AUTO_APPLY_MODULES` (nach `infra/dns`):
   die Pipeline wendet es nach Merge und Freigabe in `prod` an.
-- Der Cluster bekommt das Subnetz später über `aks_nodes_subnet_id` (Output des Moduls).
+- Der Cluster bekommt das Subnetz über `aks_nodes_subnet_id` (Output des Moduls).
 
 ### 2. Adressplan
 
@@ -25,8 +28,14 @@ neu entstehen. Gleichzeitig soll das Netzwerk nichts kosten, solange kein Cluste
 |---|---|---|
 | VNet `vnet-clusteryard` | `10.0.0.0/16` | gesamter Adressraum, Platz für weitere Subnetze |
 | Subnetz `snet-aks-nodes` | `10.0.0.0/24` | nur die AKS-Nodes (251 nutzbare IPs) |
-| Pod-CIDR (Overlay) | außerhalb des VNets, z. B. `192.168.0.0/16` | wird im Cluster-Modul gesetzt |
-| Service-CIDR | außerhalb des VNets, z. B. `172.16.0.0/16` | wird im Cluster-Modul gesetzt |
+| Pod-CIDR (Overlay) | `192.168.0.0/16` | Pod-IPs, außerhalb des VNets |
+| Service-CIDR | `172.16.0.0/16` | Kubernetes-Services, außerhalb des VNets |
+| DNS-Service-IP | `172.16.0.10` | CoreDNS, innerhalb des Service-CIDR |
+
+Pod-CIDR, Service-CIDR und DNS-Service-IP werden im Netzwerk-Modul festgelegt und als Outputs
+(`pod_cidr`, `service_cidr`, `dns_service_ip`) ausgegeben. Das Cluster-Modul liest sie über
+`terraform_remote_state` und setzt sie in `network_profile`. Der ganze Adressplan steht damit an
+einer Stelle.
 
 Weitere Subnetze (z. B. Ingress, Private Endpoints) bekommen die nächsten freien `/24` aus
 `10.0.0.0/16`.
@@ -47,6 +56,12 @@ festgelegt und nicht vom Erstellungsdatum abhängig.
 
 Ressourcengruppe und VNet haben `lifecycle { prevent_destroy = true }`, wie State-Speicher
 (Bootstrap) und DNS-Zone. Es gibt **keinen** `azurerm_management_lock`.
+
+### 6. Rechte des Clusters auf dem Subnetz
+
+Die Control-Plane-Identität `id-aks-control-plane` (langlebig, in `infra/cluster-identity`)
+hat `Network Contributor` **nur auf `snet-aks-nodes`**, nicht auf der ganzen Ressourcengruppe.
+Warum alle Cluster-Identitäten langlebig und benutzerzugewiesen sind, beschreibt ADR 0006.
 
 ## Begründung
 
@@ -72,14 +87,13 @@ Ressourcengruppe und VNet haben `lifecycle { prevent_destroy = true }`, wie Stat
 ## Konsequenzen
 
 - **Pod- und Service-CIDR dürfen sich nicht mit `10.0.0.0/16` überschneiden.** Der AKS-Standard
-  für das Service-CIDR ist ebenfalls `10.0.0.0/16`. Das Cluster-Modul muss `service_cidr`,
-  `dns_service_ip` und `pod_cidr` deshalb **explizit** setzen, sonst schlägt das Anlegen fehl.
+  für das Service-CIDR ist ebenfalls `10.0.0.0/16`. Das Cluster-Modul muss die Outputs des
+  Netzwerk-Moduls deshalb **immer** setzen und darf sich nie auf die AKS-Standardwerte verlassen.
 - `prevent_destroy` schützt nur vor Terraform. Löschen im Portal oder mit `az` ist weiterhin
   möglich. Ein Lock kann bei Bedarf einmalig lokal angelegt werden (z. B. mit `az lock create`).
 - `prevent_destroy` blockiert auch Änderungen, die ein Neuanlegen erzwingen (z. B. ein anderer
   Adressraum). Solche Änderungen müssen bewusst erfolgen: Schutz kurz entfernen, anwenden,
   Schutz wieder setzen.
 - VMs ohne AKS-Load-Balancer in diesem Subnetz haben keinen Internetzugang.
-- Die Identität des Clusters braucht später `Network Contributor` auf dem Subnetz. Das ist eine
-  Rollenzuweisung und hängt an der offenen Frage aus ADR 0001 (Rechte von `apply` für
-  Rollenzuweisungen).
+- Reihenfolge beim ersten Aufbau: `infra/identity` (Ressourcengruppe) → `infra/network`
+  (Pipeline) → `infra/cluster-identity` (Rolle auf dem Subnetz).

@@ -3,6 +3,7 @@
 - Status: akzeptiert
 - Datum: 2026-11-17
 - Aktualisiert: 2026-11-19 (State-Zugriff von Plan auf Lesen reduziert, OIDC-Subject mit festen IDs)
+- Aktualisiert: 2026-11-23 (Contributor nur noch auf Ressourcengruppen, Rollenvergabe siehe ADR 0006)
 
 ## Kontext
 
@@ -12,7 +13,8 @@ Pull Requests zu planen und nach dem Merge auf `main` anzuwenden. Gesucht ist ei
 - ohne langlebige Secrets in GitHub auskommt,
 - Pull Requests keine Schreibrechte in Azure gibt,
 - jede Änderung an Azure an eine menschliche Freigabe bindet,
-- für ein Lernprojekt auf einem privaten Abonnement mit wenig Pflegeaufwand auskommt.
+- nur clusteryard verändern kann. Im selben Abonnement liegen auch andere Projekte
+  (z. B. `rg-darshub-dev`).
 
 ## Entscheidungen
 
@@ -29,8 +31,10 @@ Tenant-ID und Subscription-ID als Variablen, also keine geheimen Werte.
 |---|---|---|
 | Verwendet von | Job `terraform-plan` bei Pull Requests | Job `terraform-apply` nach Push auf `main` |
 | OIDC-Subject | `repo:<owner>@<id>/<repo>@<id>:pull_request` | `repo:<owner>@<id>/<repo>@<id>:environment:prod` |
-| Abonnement | `Reader` | `Contributor` |
+| Abonnement | `Reader` | `Reader` |
+| Ressourcengruppen | – | `Contributor` auf `rg-dns`, `rg-network`, `rg-aks` |
 | State-Container | `Storage Blob Data Reader` | `Storage Blob Data Contributor` |
+| Kubernetes-API | – | `Azure Kubernetes Service RBAC Cluster Admin` auf `rg-aks` (ADR 0006) |
 
 Ein Pull Request kann sich nie als `apply` anmelden, weil sein Token ein anderes Subject trägt.
 `apply` ist nur über das GitHub Environment `prod` erreichbar, das eine Freigabe verlangt.
@@ -51,22 +55,39 @@ kann damit den State weder verändern noch löschen.
 Der Zugriff auf den State läuft über Entra ID (`ARM_USE_AZUREAD=true`), nicht über die
 Zugriffsschlüssel des Storage Accounts. `Reader` darf die Schlüssel ohnehin nicht abrufen.
 
-### 5. Rollen auf Abonnement-Ebene
+### 5. Schreibrechte nur auf den Ressourcengruppen von clusteryard
 
-`Reader` und `Contributor` werden auf das **gesamte Abonnement** vergeben, nicht auf
-einzelne Ressourcengruppen.
+Beide Identitäten haben auf dem Abonnement nur `Reader`. Das braucht der azurerm-Provider, um
+Resource Provider zu prüfen, und `plan` für Datenquellen. `apply` bekommt `Contributor`
+ausschließlich auf den Ressourcengruppen, in die die Pipeline schreibt:
 
-### 6. Identitäten werden lokal angelegt
+| Ressourcengruppe | Angelegt in | Genutzt von |
+|---|---|---|
+| `rg-dns` | `infra/identity` | `infra/dns` |
+| `rg-network` | `infra/identity` | `infra/network` |
+| `rg-aks` | `infra/cluster-identity` | `infra/cluster`, `infra/platform` |
+
+Die Ressourcengruppen werden im selben lokalen Modul angelegt, das auch die Rolle darauf vergibt.
+Eine Rollenzuweisung braucht einen existierenden Scope; legte die Pipeline die Gruppe selbst an,
+hätte sie bei einem Neuaufbau keine Rechte dafür. Die Pipeline-Module referenzieren ihre Gruppe
+nur per Datenquelle.
+
+### 6. Identitäten und Rechte werden lokal angelegt
 
 `infra/identity/` hat eigenen State (`identity/terraform.tfstate`) und wird lokal mit `az login`
 angewendet. Die Pipeline kann ihre eigene Identität nicht anlegen, bevor sie eine hat, und
 sie soll ihre eigenen Rechte nicht erweitern können. Im Workflow steht das Modul deshalb in
-`LOCAL_ONLY_MODULES`, genau wie `infra/bootstrap/`.
+`LOCAL_ONLY_MODULES`, genau wie `infra/bootstrap/` und `infra/cluster-identity/`.
+
+Die Pipeline vergibt **keine** Rollen. Wie das trotz Workload Identities funktioniert,
+beschreibt ADR 0006.
 
 ## Begründung
 
-- Das Abonnement wird ausschließlich für clusteryard genutzt. Ressourcengruppen entstehen und
-  verschwinden mit dem Cluster; Rollen pro Ressourcengruppe müssten jedes Mal mitgepflegt werden.
+- Im Abonnement liegen auch andere Projekte. Contributor auf das ganze Abonnement hätte der
+  Pipeline erlaubt, sie zu ändern oder zu löschen.
+- Alle Ressourcengruppen von clusteryard sind langlebig und bekannt. Der Cluster kommt und geht,
+  seine Gruppe `rg-aks` bleibt. Rollen pro Ressourcengruppe kosten deshalb keine laufende Pflege.
 - Zwei Identitäten kosten kaum Aufwand (ein `for_each` in `infra/identity/main.tf`), trennen
   aber Lesen und Schreiben sauber.
 - Kein Secret bedeutet: nichts, das ablaufen, rotiert werden oder leaken kann.
@@ -81,19 +102,21 @@ sie soll ihre eigenen Rechte nicht erweitern können. Im Workflow steht das Modu
   ist und `plan` nichts ändert, überwiegt der Nutzen nicht.
 - **Subject nur mit Namen (`repo:<owner>/<repo>`):** einfacher zu lesen, aber anfällig, wenn ein
   Name später von jemand anderem belegt wird.
+- **`Contributor` auf das Abonnement** (bis 2026-11-23 umgesetzt): einfacher, aber die Pipeline
+  konnte auch fremde Projekte im Abonnement ändern.
 
 ## Konsequenzen
 
-- `apply` kann alle Ressourcen im Abonnement ändern oder löschen (Contributor ist breit).
-  Schutz bieten nur die Freigabe in `prod` und `prevent_destroy` an wichtigen Ressourcen
-  (State-Speicher, DNS-Zone, Netzwerk; siehe ADR 0002).
-- `apply` kann **keine** Rollenzuweisungen anlegen. Sobald AKS, external-dns oder cert-manager
-  Rollenzuweisungen brauchen, bekommt `apply` zusätzlich `Role Based Access Control Administrator`
-  mit Bedingungen (nur bestimmte Rollen, nur an bestimmte Principal-Typen). Wird entschieden,
-  wenn es so weit ist; dann neues ADR oder Nachtrag hier.
+- `apply` kann nur in `rg-dns`, `rg-network` und `rg-aks` schreiben. Lesen kann es das ganze
+  Abonnement, auch fremde Projekte.
+- Innerhalb dieser Gruppen ist `Contributor` breit. Schutz bieten die Freigabe in `prod` und
+  `prevent_destroy` an wichtigen Ressourcen (State-Speicher, DNS-Zone, Netzwerk; siehe ADR 0002).
+- `apply` kann keine Ressourcengruppen anlegen oder löschen. Eine neue Gruppe für clusteryard
+  wird lokal im Identity-Modul angelegt, zusammen mit der Rolle darauf.
+- Reihenfolge beim Aufbau von null:
+  `bootstrap → identity → dns, network (Pipeline) → cluster-identity → cluster, platform (Pipeline)`.
 - Ein Plan ohne Lock kann einen State sehen, den ein laufendes Apply gerade ändert. Der Plan ist
   dann ungenau, aber harmlos: `apply` plant beim Lauf neu.
 - Nach einer Umbenennung von Owner oder Repository bleiben die IDs gleich, die Anmeldung
   funktioniert weiter. Nach einem Neuanlegen des Repositorys muss `github_oidc_repo` angepasst
   und `infra/identity/` lokal neu angewendet werden.
-- Später: Einschränkung auf die Ressourcengruppen des Projekts statt des ganzen Abonnements.

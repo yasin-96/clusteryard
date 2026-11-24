@@ -1,0 +1,5 @@
+# Requests a review from the owner on every pull request. Not enforced by the
+# ruleset while there is a single maintainer (see docs/adr/0007).
+*                   @yasin-96
+/infra/             @yasin-96
+/.github/           @yasin-96

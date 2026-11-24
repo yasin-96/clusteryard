@@ -1,0 +1,120 @@
+name: cluster
+
+# Brings the on-demand modules (cluster and everything on it) up or down.
+# They are planned on pull requests by terraform.yml, but a merge never
+# applies them (ADR 0004, ADR 0005).
+
+on:
+  workflow_dispatch:
+    inputs:
+      action:
+        description: "up = build, down = tear down"
+        required: true
+        type: choice
+        options: [up, down]
+
+permissions:
+  contents: read
+
+defaults:
+  run:
+    shell: bash
+
+env:
+  TF_VERSION: "1.16.4"
+  TF_IN_AUTOMATION: "true"
+  TF_INPUT: "false"
+  ARM_USE_OIDC: "true"
+  ARM_USE_AZUREAD: "true"
+  ARM_TENANT_ID: ${{ vars.AZURE_TENANT_ID }}
+  ARM_SUBSCRIPTION_ID: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+  # Must match ON_DEMAND_MODULES in terraform.yml.
+  # ORDER MATTERS: build order. Teardown runs it in reverse.
+  # Every module after infra/cluster needs a running cluster.
+  ON_DEMAND_MODULES: "infra/cluster"
+
+jobs:
+  cluster:
+    name: cluster-${{ inputs.action }}
+    runs-on: ubuntu-latest
+    # Required reviewers and the main-only deployment policy gate this job.
+    # The apply identity trusts exactly this environment (ADR 0001). There is
+    # no separate plan job: the plan identity only trusts pull_request tokens.
+    environment: prod
+    permissions:
+      id-token: write
+      contents: read
+    # Shares the group with terraform-apply in terraform.yml: never runs at the
+    # same time as an apply after a merge. Queued runs wait.
+    concurrency:
+      group: terraform-apply
+      cancel-in-progress: false
+    timeout-minutes: 60
+    env:
+      ARM_CLIENT_ID: ${{ vars.AZURE_CLIENT_ID_APPLY }}
+      ACTION: ${{ inputs.action }}
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+
+      - uses: hashicorp/setup-terraform@dfe3c3f87815947d99a8997f908cb6525fc44e9e # v4.0.1
+        with:
+          terraform_version: ${{ env.TF_VERSION }}
+          terraform_wrapper: false
+
+      - uses: azure/login@a641126d1b8aa4d1fa005f4f92df94a3a4c4c906 # v3.1.0
+        with:
+          client-id: ${{ vars.AZURE_CLIENT_ID_APPLY }}
+          tenant-id: ${{ vars.AZURE_TENANT_ID }}
+          subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
+
+      - name: init, plan, ${{ inputs.action == 'up' && 'apply' || 'destroy' }}
+        run: |
+          set -euo pipefail
+
+          # Reads name and resource group from the cluster state, then asks
+          # Azure (ADR 0005): the state alone can be stale.
+          cluster_exists() {
+            local name rg
+            name=$(terraform -chdir=infra/cluster output -raw cluster_name 2>/dev/null) || return 1
+            rg=$(terraform -chdir=infra/cluster output -raw resource_group_name 2>/dev/null) || return 1
+            az aks show --name "$name" --resource-group "$rg" --only-show-errors >/dev/null 2>&1
+          }
+
+          modules=($ON_DEMAND_MODULES)
+          if [[ "$ACTION" == "down" ]]; then
+            reversed=()
+            for (( i=${#modules[@]}-1; i>=0; i-- )); do reversed+=("${modules[i]}"); done
+            modules=("${reversed[@]}")
+            plan_flags=(-destroy)
+          else
+            plan_flags=()
+          fi
+
+          # The cluster module must be initialised first: cluster_exists reads its outputs.
+          terraform -chdir=infra/cluster init
+
+          for m in "${modules[@]}"; do
+            echo "::group::$m"
+            terraform -chdir="$m" init
+
+            if [[ "$m" != "infra/cluster" ]] && ! cluster_exists; then
+              echo "::notice title=$m::no running cluster, skipped"
+              echo "::endgroup::"
+              continue
+            fi
+
+            # Plan and apply the same saved plan, and keep the plan visible in the run.
+            terraform -chdir="$m" plan "${plan_flags[@]}" -out=tfplan -no-color | tee "$RUNNER_TEMP/plan.txt"
+            {
+              echo "### $m ($ACTION)"
+              echo '```'
+              cat "$RUNNER_TEMP/plan.txt"
+              echo '```'
+            } >> "$GITHUB_STEP_SUMMARY"
+            terraform -chdir="$m" apply tfplan
+            rm -f "$m/tfplan"
+            echo "::endgroup::"
+          done

@@ -41,7 +41,8 @@ env:
 
   # Throwaway modules (cluster and everything on it). Planned on pull requests,
   # but never applied on push: they are brought up and torn down on demand by a
-  # separate workflow_dispatch workflow, so a merge never recreates the cluster.
+  # separate workflow_dispatch workflow (cluster.yml), so a merge never
+  # recreates the cluster. Keep this list in sync with ON_DEMAND_MODULES there.
   ON_DEMAND_MODULES: "infra/cluster"
 
 jobs:
@@ -77,6 +78,14 @@ jobs:
         run: |
           set -euo pipefail
           in_list() { [[ " $2 " == *" $1 "* ]]; }
+
+          # cluster.yml brings these modules up and down; both lists must agree.
+          sorted() { tr ' ' '\n' <<<"$1" | grep -v '^$' | sort; }
+          cluster_list=$(sed -n 's/^  ON_DEMAND_MODULES: "\(.*\)"$/\1/p' .github/workflows/cluster.yml)
+          if [[ "$(sorted "$ON_DEMAND_MODULES")" != "$(sorted "$cluster_list")" ]]; then
+            echo "::error title=ON_DEMAND_MODULES::differs between terraform.yml ($ON_DEMAND_MODULES) and cluster.yml ($cluster_list)"
+            exit 1
+          fi
 
           modules=$(find infra -name '*.tf' -not -path '*/.terraform/*' -exec dirname {} \; | sort -u)
 

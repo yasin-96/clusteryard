@@ -18,6 +18,15 @@ deshalb bei Bedarf aufgebaut und wieder abgebaut. Alles, was diesen Zyklus über
 - Modul `infra/cluster`, State `cluster/terraform.tfstate`, in `ON_DEMAND_MODULES`.
 - In Pull Requests wird es geplant, aber nie automatisch angewendet. Auf- und Abbau laufen
   über einen eigenen Workflow mit `workflow_dispatch` (`up`/`down`).
+- Der Workflow ist `.github/workflows/cluster.yml`. Er läuft in der Umgebung `prod`, also nur
+  von `main` und nach Freigabe, mit der Apply-Identität (ADR 0001). `up` wendet die Module aus
+  `ON_DEMAND_MODULES` in der aufgeführten Reihenfolge an, `down` zerstört sie in umgekehrter
+  Reihenfolge. Die Liste muss mit `terraform.yml` übereinstimmen; der Plan-Job prüft das.
+- Es gibt keinen Plan vor der Freigabe. Die Plan-Identität vertraut nur Tokens aus Pull
+  Requests, ein manuell gestarteter Lauf kann sich nur über `prod` anmelden. Freigegeben wird
+  daher der Lauf, nicht ein bestimmter Plan; der Plan steht anschließend in der
+  Zusammenfassung des Laufs. Akzeptiert, weil der Cluster kurzlebig ist und Änderungen an den
+  Modulen bereits im Pull Request geplant werden.
 - Der Cluster liegt in `rg-aks` (angelegt in `infra/cluster-identity`). Die Gruppe und alle
   Rollen darauf bleiben bestehen, wenn der Cluster gelöscht wird.
 
@@ -147,3 +156,7 @@ deshalb kein `AcrPull`.
 Nach den festen Kosten des Fundaments (rund 1 USD im Monat) bleiben etwa 100 Cluster-Stunden
 im Monat. Ein vergessener Cluster kostet rund 140 USD im Monat; der Auf-/Abbau-Workflow
 soll ihn deshalb zusätzlich jede Nacht abbauen.
+
+Offen: Der nächtliche Abbau ist noch nicht umgesetzt. Ein geplanter Lauf (`schedule`) würde an
+der Freigabe von `prod` hängen bleiben und braucht eine eigene Entscheidung. Bis dahin muss
+`down` von Hand gestartet werden.

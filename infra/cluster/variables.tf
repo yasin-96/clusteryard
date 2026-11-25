@@ -35,7 +35,7 @@ variable "system_pool" {
     node_count = number
   })
   default = {
-    vm_size    = "Standard_B2s" # 2 vCPU, 4 GiB
+    vm_size    = "Standard_B2ls_v2" # 2 vCPU, 4 GiB
     node_count = 1
   }
 }
@@ -47,7 +47,7 @@ variable "apps_pool" {
     node_count = number
   })
   default = {
-    vm_size    = "Standard_B2ms" # 2 vCPU, 8 GiB
+    vm_size    = "Standard_B2s_v2" # 2 vCPU, 8 GiB
     node_count = 1
   }
 }

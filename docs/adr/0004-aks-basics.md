@@ -68,13 +68,16 @@ die Entra-Anmeldung und Azure RBAC.
 
 | Pool | Modus | VM | Nodes | Läuft dort |
 |---|---|---|---|---|
-| `system` | System, Taint `CriticalAddonsOnly` | `Standard_B2s` (2 vCPU, 4 GiB) | 1 | `kube-system`, AKS-Add-ons, Cilium |
-| `apps` | User | `Standard_B2ms` (2 vCPU, 8 GiB) | 1 | ArgoCD, Ingress, cert-manager, external-dns, Observability, Services |
+| `system` | System, Taint `CriticalAddonsOnly` | `Standard_B2ls_v2` (2 vCPU, 4 GiB) | 1 | `kube-system`, AKS-Add-ons, Cilium |
+| `apps` | User | `Standard_B2s_v2` (2 vCPU, 8 GiB) | 1 | ArgoCD, Ingress, cert-manager, external-dns, Observability, Services |
 
 - Beide Pools im Node-Subnetz, OS-Datenträger 32 GB Managed (Standard wären 128 GB Premium).
 - Tags auch an den Pools, damit die VM-Kosten in `rg-aks-nodes` dem Projekt zugeordnet werden.
-- Nur die klassische B-Serie hat Quota in `germanywestcentral` (10 vCPU). Die Pools brauchen 4,
-  bei Upgrades mit `max_surge = 1` kurzzeitig 6.
+- B-Serie v2 (`standardBsv2Family`), Quota 6 vCPU in `germanywestcentral`, beantragt am
+  2026-11-24. Die Pools brauchen 4, bei Upgrades mit `max_surge = 1` kurzzeitig 6.
+- Die klassische B-Serie (`B2s`, `B2ms`) hat zwar 10 vCPU Quota, AKS lässt sie in diesem
+  Abonnement aber nicht zu (`400 BadRequest: VM size … is not allowed`). Für die AMD-Variante
+  (`standardBasv2Family`) wurde Quota abgelehnt (`QuotaNotAvailableForResource`).
 
 ### 8. Tarif, Version und Upgrades
 
@@ -146,8 +149,8 @@ deshalb kein `AcrPull`.
 
 | Posten | USD pro Stunde |
 |---|---|
-| B2s (System) | 0,048 |
-| B2ms (Apps) | 0,096 |
+| B2ls_v2 (System) | 0,048 |
+| B2s_v2 (Apps) | 0,096 |
 | 2 × OS-Datenträger P4 | 0,016 |
 | Standard Load Balancer (geschätzt) | 0,025 |
 | Öffentliche IP | 0,005 |

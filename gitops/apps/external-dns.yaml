@@ -1,0 +1,53 @@
+# external-dns: creates A/TXT records in k8s.clusteryard.dev for ingresses and
+# LoadBalancer services (ADR 0008). Logs in with workload identity id-external-dns.
+# The federated credential trusts system:serviceaccount:external-dns:external-dns,
+# so namespace, release name and service account name must stay "external-dns".
+#
+# Two sources: the chart, and the Azure config file it reads (no secrets in it).
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: external-dns
+  namespace: argocd
+spec:
+  project: default
+  sources:
+    - repoURL: https://kubernetes-sigs.github.io/external-dns/
+      chart: external-dns
+      targetRevision: 1.23.0 # external-dns v0.23.0
+      helm:
+        releaseName: external-dns
+        valuesObject:
+          provider:
+            name: azure
+          podLabels:
+            azure.workload.identity/use: "true"
+          serviceAccount:
+            annotations:
+              azure.workload.identity/client-id: 55b09803-6248-47e1-a8f6-80fc13260b4c # id-external-dns
+          extraVolumes:
+            - name: azure-config
+              configMap:
+                name: external-dns-azure
+          extraVolumeMounts:
+            - name: azure-config
+              mountPath: /etc/kubernetes
+              readOnly: true
+          domainFilters:
+            - k8s.clusteryard.dev
+          # Fixed owner ID: a rebuilt cluster recognises (and cleans up) the
+          # records its predecessor created.
+          txtOwnerId: aks-clusteryard
+          policy: sync # also deletes records whose ingress or service is gone
+    - repoURL: https://github.com/yasin-96/clusteryard.git
+      targetRevision: main
+      path: gitops/platform/external-dns
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: external-dns
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true

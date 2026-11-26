@@ -1,0 +1,16 @@
+# Azure provider config for external-dns, mounted at /etc/kubernetes/azure.json.
+# Identifiers only, no credentials: the login uses the workload identity token
+# that the webhook injects (useWorkloadIdentityExtension).
+apiVersion: v1
+kind: ConfigMap
+metadata:
+  name: external-dns-azure
+  namespace: external-dns
+data:
+  azure.json: |
+    {
+      "tenantId": "bc997504-5879-4e4c-892a-de66612ff5fe",
+      "subscriptionId": "678c11b0-ff2e-44fb-8cbd-f7d3a849c3b0",
+      "resourceGroup": "rg-dns",
+      "useWorkloadIdentityExtension": true
+    }

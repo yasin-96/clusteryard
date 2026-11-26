@@ -1,0 +1,38 @@
+# cert-manager: TLS certificates from Let's Encrypt via DNS-01 in Azure DNS (ADR 0008).
+# Logs in to Azure with workload identity id-cert-manager (infra/cluster-identity).
+# The federated credential trusts system:serviceaccount:cert-manager:cert-manager,
+# so namespace, release name and service account name must stay "cert-manager".
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://charts.jetstack.io
+    chart: cert-manager
+    targetRevision: v1.21.3
+    helm:
+      releaseName: cert-manager
+      valuesObject:
+        crds:
+          enabled: true
+          keep: true # deleting the app must not delete every Certificate in the cluster
+        # Workload identity: the webhook injects the federated token into pods with
+        # this label, for the client ID annotated on the service account.
+        podLabels:
+          azure.workload.identity/use: "true"
+        serviceAccount:
+          annotations:
+            azure.workload.identity/client-id: fb098555-74ac-4ee4-a423-1f2fd44f8756 # id-cert-manager
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true # the CRDs are too large for client-side apply annotations

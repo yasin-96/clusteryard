@@ -34,7 +34,7 @@ Tenant-ID und Subscription-ID als Variablen, also keine geheimen Werte.
 | Abonnement | `Reader` | `Reader` |
 | Ressourcengruppen | – | `Contributor` auf `rg-dns`, `rg-network`, `rg-aks` |
 | State-Container | `Storage Blob Data Reader` | `Storage Blob Data Contributor` |
-| Kubernetes-API | – | `Azure Kubernetes Service RBAC Cluster Admin` auf `rg-aks` (ADR 0006) |
+| Kubernetes-API | `Azure Kubernetes Service Cluster User Role` auf `rg-aks`, nur Kubeconfig abrufen (ADR 0006) | `Azure Kubernetes Service RBAC Cluster Admin` auf `rg-aks` (ADR 0006) |
 
 Ein Pull Request kann sich nie als `apply` anmelden, weil sein Token ein anderes Subject trägt.
 `apply` ist nur über das GitHub Environment `prod` erreichbar, das eine Freigabe verlangt.

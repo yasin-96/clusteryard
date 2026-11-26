@@ -34,6 +34,7 @@ nur. Alle liegen in `rg-aks` und werden in `infra/cluster-identity` angelegt (lo
 | Apply-Identität | Contributor | `rg-aks` | Cluster anlegen und löschen |
 | Apply-Identität | Azure Kubernetes Service RBAC Cluster Admin | `rg-aks` | Helm-Installation (ADR 0005) |
 | Administrator (Person) | Azure Kubernetes Service RBAC Cluster Admin | `rg-aks` | `kubectl`, Fehlersuche |
+| Plan-Identität | Azure Kubernetes Service Cluster User Role | `rg-aks` | Plan im Pull Request bei laufendem Cluster (siehe 5.) |
 
 Die Rollen von `apply` auf `rg-dns` und `rg-network` stehen in `infra/identity` (ADR 0001).
 
@@ -50,6 +51,18 @@ auf `rg-aks`.
   Anlegen der Rolle noch nicht da, und auf dem Abonnement gälte die Rolle für jeden AKS-Cluster.
 - Apply-Identität und Administrator bekommen je eine eigene Zuweisung (ein `for_each`), keine
   gemeinsame Entra-Gruppe.
+
+### 5. Plan-Identität darf das Kubeconfig abrufen
+
+Läuft ein Cluster, aktualisiert der Plan im Pull Request `azurerm_kubernetes_cluster`. Der
+Provider liest dabei das Kubeconfig (`listClusterUserCredential`), das `Reader` nicht erlaubt.
+Ohne die Rolle schlägt jeder Pull Request fehl, solange ein Cluster läuft (403, entdeckt in
+PR #11).
+
+`Azure Kubernetes Service Cluster User Role` erlaubt nur diese eine Aktion. Weil lokale Konten
+abgeschaltet sind (ADR 0004), enthält das Kubeconfig kein Geheimnis, nur Endpunkt, CA und den
+Aufruf von `kubelogin`. Rechte in Kubernetes kommen nur aus Azure RBAC, und die Plan-Identität
+hat dort keine Rolle. Sie kann das Kubeconfig abrufen, im Cluster aber nichts tun.
 
 ## Begründung
 

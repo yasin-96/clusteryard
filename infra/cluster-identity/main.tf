@@ -61,6 +61,16 @@ locals {
       role           = "Azure Kubernetes Service RBAC Cluster Admin"
       scope          = azurerm_resource_group.aks.id
     }
+    # Pull request plans refresh the running cluster, and azurerm reads its
+    # kubeconfig (listClusterUserCredential). Reader does not include that.
+    # With local accounts disabled the kubeconfig holds no secret, and the
+    # plan identity has no Kubernetes RBAC role, so it cannot act in the cluster.
+    plan_cluster_user = {
+      principal_id   = data.azuread_service_principal.plan.object_id
+      principal_type = "ServicePrincipal"
+      role           = "Azure Kubernetes Service Cluster User Role"
+      scope          = azurerm_resource_group.aks.id
+    }
     admin_cluster_admin = {
       principal_id   = var.admin_object_id
       principal_type = "User"

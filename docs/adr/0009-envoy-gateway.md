@@ -80,5 +80,6 @@ gültigem Zertifikat.
   Hostnamen.
 - Die Application `gateway` braucht die CRDs von Envoy Gateway und cert-manager. Bis sie da
   sind, schlägt der Sync fehl und wird wiederholt.
-- Ungeprüft bis zum ersten Aufbau: ob der Health Probe des Azure-Load-Balancers den Envoy-Proxy
-  ohne zusätzliche Service-Annotations als gesund erkennt.
+- Bestätigt beim ersten Aufbau (2026-11-26): Der Health Probe des Azure-Load-Balancers erkennt
+  den Envoy-Proxy ohne zusätzliche Service-Annotations als gesund. Das Wildcard-Zertifikat war
+  nach weniger als einer Minute ausgestellt.

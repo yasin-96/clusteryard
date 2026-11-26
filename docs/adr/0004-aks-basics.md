@@ -153,8 +153,9 @@ deshalb kein `AcrPull`.
 | B2s_v2 (Apps) | 0,096 |
 | 2 × OS-Datenträger P4 | 0,016 |
 | Standard Load Balancer (geschätzt) | 0,025 |
-| Öffentliche IP | 0,005 |
-| **Summe** | **≈ 0,19** |
+| Öffentliche IP (ausgehend) | 0,005 |
+| Öffentliche IP (Gateway, ADR 0009) | 0,005 |
+| **Summe** | **≈ 0,20** |
 
 Nach den festen Kosten des Fundaments (rund 1 USD im Monat) bleiben etwa 100 Cluster-Stunden
 im Monat. Ein vergessener Cluster kostet rund 140 USD im Monat; der Auf-/Abbau-Workflow

@@ -1,0 +1,35 @@
+# One public entry point for *.k8s.clusteryard.dev. Envoy Gateway creates the
+# Envoy proxy and a LoadBalancer service for it (Azure public IP in rg-aks-nodes).
+#
+# Routes may attach to the HTTPS listener only from namespaces labelled
+# clusteryard.dev/gateway-access=true, not from every namespace.
+apiVersion: gateway.networking.k8s.io/v1
+kind: Gateway
+metadata:
+  name: public
+  namespace: gateway
+spec:
+  gatewayClassName: envoy
+  listeners:
+    - name: http
+      port: 80
+      protocol: HTTP
+      hostname: "*.k8s.clusteryard.dev"
+      allowedRoutes:
+        namespaces:
+          from: Same # only the redirect below
+    - name: https
+      port: 443
+      protocol: HTTPS
+      hostname: "*.k8s.clusteryard.dev"
+      tls:
+        mode: Terminate
+        certificateRefs:
+          - kind: Secret
+            name: wildcard-k8s-clusteryard-dev-tls
+      allowedRoutes:
+        namespaces:
+          from: Selector
+          selector:
+            matchLabels:
+              clusteryard.dev/gateway-access: "true"

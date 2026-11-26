@@ -1,0 +1,70 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: backend
+  namespace: backend
+  labels:
+    app.kubernetes.io/name: backend
+spec:
+  replicas: 1 # one apps node in the demo profile (ADR 0004)
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backend
+  template:
+    metadata:
+      labels:
+        app.kubernetes.io/name: backend
+    spec:
+      automountServiceAccountToken: false # the app never talks to the Kubernetes API
+      securityContext:
+        runAsNonRoot: true
+        runAsUser: 10001 # the image runs as root by default; any non-root UID works
+        runAsGroup: 10001
+        seccompProfile:
+          type: RuntimeDefault
+      containers:
+        - name: backend
+          # Tag = commit in three-tier-app-azure, never :main, so every change is a commit here.
+          # The digest pins the exact image even if the tag were pushed again.
+          image: ghcr.io/yasin-96/three-tier-backend:f51a9ab27a0a72cfb89f9ba44e126eb1416bdf60@sha256:29a17c7189192859110cc76d681ce53de51ae0cef8c726fa8d2e5547125d2c18
+          ports:
+            - name: http
+              containerPort: 8080
+          env:
+            # Spring Boot enables /actuator/health/{liveness,readiness} on Kubernetes.
+            - name: JAVA_TOOL_OPTIONS
+              value: "-XX:MaxRAMPercentage=75"
+          resources:
+            requests:
+              cpu: 100m
+              memory: 256Mi
+            limits:
+              memory: 512Mi # no CPU limit: throttling hurts JVM startup more than it helps
+          startupProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 5
+            failureThreshold: 30 # up to 150 s for JVM startup on a B-series node
+          livenessProbe:
+            httpGet:
+              path: /actuator/health/liveness
+              port: http
+            periodSeconds: 10
+          readinessProbe:
+            httpGet:
+              path: /actuator/health/readiness
+              port: http
+            periodSeconds: 5
+          securityContext:
+            allowPrivilegeEscalation: false
+            readOnlyRootFilesystem: true
+            capabilities:
+              drop: ["ALL"]
+          volumeMounts:
+            - name: tmp
+              mountPath: /tmp # Spring Boot / Tomcat write temp files here
+      volumes:
+        - name: tmp
+          emptyDir:
+            sizeLimit: 64Mi

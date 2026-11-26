@@ -8,7 +8,9 @@ Only `.yaml`, `.yml` and `.json` files are applied; this README is ignored.
 |---|---|---|
 | `cert-manager` | TLS certificates (Let's Encrypt, DNS-01 in Azure DNS) | 0008 |
 | `cert-manager-issuers` | ClusterIssuers `letsencrypt-staging`, `letsencrypt-prod` | 0008 |
-| `external-dns` | DNS records in `k8s.clusteryard.dev` for ingresses and services | 0008 |
+| `external-dns` | DNS records in `k8s.clusteryard.dev` for HTTPRoutes, ingresses and services | 0008, 0009 |
+| `envoy-gateway` | Gateway API implementation (Envoy) | 0009 |
+| `gateway` | Gateway `public`, wildcard certificate, HTTP-to-HTTPS redirect | 0009 |
 
 Plain manifests that belong to a component (not Applications) live in
 `gitops/platform/<name>` and are referenced from the Application here.

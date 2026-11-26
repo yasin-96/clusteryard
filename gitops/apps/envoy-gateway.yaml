@@ -1,0 +1,27 @@
+# Envoy Gateway: Gateway API implementation (ADR 0009). Replaces an Ingress
+# controller; ingress-nginx is retired since March 2026.
+# The chart bundles the Gateway API CRDs and its own CRDs.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: envoy-gateway
+  namespace: argocd
+spec:
+  project: default
+  source:
+    # OCI Helm repository, declared in ArgoCD (infra/platform/values/argocd.yaml).
+    repoURL: docker.io/envoyproxy
+    chart: gateway-helm
+    targetRevision: v1.9.3
+    helm:
+      releaseName: envoy-gateway
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: envoy-gateway-system
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true # the CRDs are too large for client-side apply annotations

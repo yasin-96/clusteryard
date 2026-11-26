@@ -33,6 +33,12 @@ spec:
             - name: azure-config
               mountPath: /etc/kubernetes
               readOnly: true
+          # gateway-httproute: records for HTTPRoute hostnames, pointing at the
+          # address of their Gateway (ADR 0009).
+          sources:
+            - service
+            - ingress
+            - gateway-httproute
           domainFilters:
             - k8s.clusteryard.dev
           # Fixed owner ID: a rebuilt cluster recognises (and cleans up) the

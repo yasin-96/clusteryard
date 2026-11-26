@@ -12,3 +12,12 @@ dex:
 
 notifications:
   enabled: false
+
+# Helm charts published only as OCI artifacts. Public, no credentials.
+configs:
+  repositories:
+    envoyproxy:
+      name: envoyproxy
+      type: helm
+      url: docker.io/envoyproxy
+      enableOCI: "true"

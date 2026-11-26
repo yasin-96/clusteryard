@@ -1,0 +1,30 @@
+# The public Gateway, its wildcard certificate and the HTTP-to-HTTPS redirect
+# (ADR 0009). Needs the CRDs of envoy-gateway and cert-manager; until they exist
+# the sync fails and is retried.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: gateway
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/yasin-96/clusteryard.git
+    targetRevision: main
+    path: gitops/platform/gateway
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: gateway
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - SkipDryRunOnMissingResource=true
+    retry:
+      limit: 10
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

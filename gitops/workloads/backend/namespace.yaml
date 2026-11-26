@@ -1,0 +1,10 @@
+# The label lets HTTPRoutes in this namespace attach to the public Gateway
+# (ADR 0009). Without it the route is rejected.
+apiVersion: v1
+kind: Namespace
+metadata:
+  name: backend
+  labels:
+    clusteryard.dev/gateway-access: "true"
+    # Pod Security Standards: reject pods that do not meet "restricted".
+    pod-security.kubernetes.io/enforce: restricted

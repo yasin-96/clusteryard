@@ -1,0 +1,28 @@
+# Spring Boot backend from github.com/yasin-96/three-tier-app-azure, the first
+# workload on the platform (ADR 0010). Image from GHCR, built by that repo.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: backend
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/yasin-96/clusteryard.git
+    targetRevision: main
+    path: gitops/workloads/backend
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: backend
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - SkipDryRunOnMissingResource=true # HTTPRoute CRD comes with envoy-gateway
+    retry:
+      limit: 10
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

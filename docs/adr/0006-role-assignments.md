@@ -59,7 +59,8 @@ Provider liest dabei das Kubeconfig (`listClusterUserCredential`), das `Reader` 
 Ohne die Rolle schlägt jeder Pull Request fehl, solange ein Cluster läuft (403, entdeckt in
 PR #11).
 
-`Azure Kubernetes Service Cluster User Role` erlaubt nur diese eine Aktion. Weil lokale Konten
+`Azure Kubernetes Service Cluster User Role` erlaubt nur diese Aktion und
+`managedClusters/read`, das `Reader` ohnehin enthält. Datenaktionen hat die Rolle keine. Weil lokale Konten
 abgeschaltet sind (ADR 0004), enthält das Kubeconfig kein Geheimnis, nur Endpunkt, CA und den
 Aufruf von `kubelogin`. Rechte in Kubernetes kommen nur aus Azure RBAC, und die Plan-Identität
 hat dort keine Rolle. Sie kann das Kubeconfig abrufen, im Cluster aber nichts tun.

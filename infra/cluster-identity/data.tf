@@ -22,7 +22,11 @@ data "terraform_remote_state" "network" {
   config  = merge(local.state_backend, { key = "network/terraform.tfstate" })
 }
 
-# Pipeline apply identity, looked up by its (stable) client ID.
+# Pipeline identities, looked up by their (stable) client IDs.
 data "azuread_service_principal" "apply" {
   client_id = data.terraform_remote_state.identity.outputs.apply_client_id
+}
+
+data "azuread_service_principal" "plan" {
+  client_id = data.terraform_remote_state.identity.outputs.plan_client_id
 }

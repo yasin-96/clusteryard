@@ -43,7 +43,12 @@ env:
   # but never applied on push: they are brought up and torn down on demand by a
   # separate workflow_dispatch workflow (cluster.yml), so a merge never
   # recreates the cluster. Keep this list in sync with ON_DEMAND_MODULES there.
-  ON_DEMAND_MODULES: "infra/cluster"
+  ON_DEMAND_MODULES: "infra/cluster infra/platform"
+
+  # On-demand modules that talk to the Kubernetes API. Only fmt-checked and
+  # validated on pull requests: the cluster is usually down, and the plan
+  # identity cannot read Helm release secrets (ADR 0005).
+  NO_PR_PLAN_MODULES: "infra/platform"
 
 jobs:
   plan:
@@ -86,6 +91,12 @@ jobs:
             echo "::error title=ON_DEMAND_MODULES::differs between terraform.yml ($ON_DEMAND_MODULES) and cluster.yml ($cluster_list)"
             exit 1
           fi
+          for m in $NO_PR_PLAN_MODULES; do
+            if ! in_list "$m" "$ON_DEMAND_MODULES"; then
+              echo "::error title=NO_PR_PLAN_MODULES::$m is not in ON_DEMAND_MODULES"
+              exit 1
+            fi
+          done
 
           modules=$(find infra -name '*.tf' -not -path '*/.terraform/*' -exec dirname {} \; | sort -u)
 
@@ -97,6 +108,10 @@ jobs:
               terraform -chdir="$m" init -backend=false
               terraform -chdir="$m" validate
               echo "::notice title=$m::local-only module, plan skipped"
+            elif in_list "$m" "$NO_PR_PLAN_MODULES"; then
+              terraform -chdir="$m" init -backend=false
+              terraform -chdir="$m" validate
+              echo "::notice title=$m::Kubernetes module, plan skipped (planned by cluster.yml before apply)"
             elif in_list "$m" "$AUTO_APPLY_MODULES $ON_DEMAND_MODULES"; then
               terraform -chdir="$m" init
               terraform -chdir="$m" validate

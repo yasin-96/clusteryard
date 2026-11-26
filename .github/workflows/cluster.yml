@@ -32,7 +32,11 @@ env:
   # Must match ON_DEMAND_MODULES in terraform.yml.
   # ORDER MATTERS: build order. Teardown runs it in reverse.
   # Every module after infra/cluster needs a running cluster.
-  ON_DEMAND_MODULES: "infra/cluster"
+  ON_DEMAND_MODULES: "infra/cluster infra/platform"
+
+  # kubelogin for the Kubernetes modules (Entra ID only, ADR 0004).
+  KUBELOGIN_VERSION: "v0.2.22"
+  KUBELOGIN_SHA256: "716cbcb1880bca8f0e976b8917d06fcfe04de2c1e737eaaabbb26e2782330119" # kubelogin-linux-amd64.zip
 
 jobs:
   cluster:
@@ -70,6 +74,19 @@ jobs:
           tenant-id: ${{ vars.AZURE_TENANT_ID }}
           subscription-id: ${{ vars.AZURE_SUBSCRIPTION_ID }}
 
+      # Not a marketplace action: the Actions allowlist (ADR 0007) only permits
+      # pinned, known actions. Downloaded by version and checked by SHA256 instead.
+      - name: install kubelogin
+        run: |
+          set -euo pipefail
+          cd "$RUNNER_TEMP"
+          curl -fsSLo kubelogin.zip "https://github.com/Azure/kubelogin/releases/download/${KUBELOGIN_VERSION}/kubelogin-linux-amd64.zip"
+          echo "${KUBELOGIN_SHA256}  kubelogin.zip" | sha256sum --check --strict
+          unzip -q kubelogin.zip
+          mkdir -p "$HOME/.local/bin"
+          install -m 0755 bin/linux_amd64/kubelogin "$HOME/.local/bin/kubelogin"
+          echo "$HOME/.local/bin" >> "$GITHUB_PATH"
+
       - name: init, plan, ${{ inputs.action == 'up' && 'apply' || 'destroy' }}
         run: |
           set -euo pipefail
@@ -93,6 +110,21 @@ jobs:
             plan_flags=()
           fi
 
+          # kubelogin in workloadidentity mode (infra/platform). The token behind
+          # azure/login is only valid for minutes and has expired once the
+          # cluster is up, so fetch a fresh GitHub OIDC token right before plan
+          # and before apply of a Kubernetes module (kubelogin does not cache
+          # in this mode; each terraform process logs in again).
+          export TF_VAR_kubelogin_login=workloadidentity
+          export AZURE_CLIENT_ID="$ARM_CLIENT_ID" AZURE_TENANT_ID="$ARM_TENANT_ID"
+          export AZURE_AUTHORITY_HOST="https://login.microsoftonline.com/"
+          export AZURE_FEDERATED_TOKEN_FILE="$RUNNER_TEMP/oidc-token"
+          fresh_oidc_token() {
+            curl -fsS -H "Authorization: Bearer $ACTIONS_ID_TOKEN_REQUEST_TOKEN" \
+              "${ACTIONS_ID_TOKEN_REQUEST_URL}&audience=api://AzureADTokenExchange" \
+              | jq -er .value > "$AZURE_FEDERATED_TOKEN_FILE"
+          }
+
           # The cluster module must be initialised first: cluster_exists reads its outputs.
           terraform -chdir=infra/cluster init
 
@@ -105,8 +137,11 @@ jobs:
               echo "::endgroup::"
               continue
             fi
+            needs_k8s=false
+            [[ "$m" != "infra/cluster" ]] && needs_k8s=true
 
             # Plan and apply the same saved plan, and keep the plan visible in the run.
+            if $needs_k8s; then fresh_oidc_token; fi
             terraform -chdir="$m" plan "${plan_flags[@]}" -out=tfplan -no-color | tee "$RUNNER_TEMP/plan.txt"
             {
               echo "### $m ($ACTION)"
@@ -114,6 +149,7 @@ jobs:
               cat "$RUNNER_TEMP/plan.txt"
               echo '```'
             } >> "$GITHUB_STEP_SUMMARY"
+            if $needs_k8s; then fresh_oidc_token; fi
             terraform -chdir="$m" apply tfplan
             rm -f "$m/tfplan"
             echo "::endgroup::"

@@ -29,6 +29,23 @@ spec:
   destination:
     server: https://kubernetes.default.svc
     namespace: cert-manager
+  # Fields other controllers own on purpose. Without this, selfHeal would fight them:
+  # - caBundle: injected by cert-manager-cainjector.
+  # - namespaceSelector rules for kubernetes.azure.com/managedby and control-plane:
+  #   added by the AKS admissions enforcer to keep webhooks away from system namespaces.
+  ignoreDifferences:
+    - group: admissionregistration.k8s.io
+      kind: ValidatingWebhookConfiguration
+      name: cert-manager-webhook
+      jqPathExpressions:
+        - .webhooks[].clientConfig.caBundle
+        - .webhooks[].namespaceSelector.matchExpressions[] | select(.key == "kubernetes.azure.com/managedby" or .key == "control-plane")
+    - group: admissionregistration.k8s.io
+      kind: MutatingWebhookConfiguration
+      name: cert-manager-webhook
+      jqPathExpressions:
+        - .webhooks[].clientConfig.caBundle
+        - .webhooks[].namespaceSelector.matchExpressions[] | select(.key == "kubernetes.azure.com/managedby" or .key == "control-plane")
   syncPolicy:
     automated:
       prune: true
@@ -36,3 +53,4 @@ spec:
     syncOptions:
       - CreateNamespace=true
       - ServerSideApply=true # the CRDs are too large for client-side apply annotations
+      - RespectIgnoreDifferences=true # sync must not overwrite the ignored fields either

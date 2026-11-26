@@ -52,6 +52,11 @@ Offen war die Installation im Cluster.
 - Die Issuers sind eine eigene Application. Sie brauchen die CRDs von cert-manager; bis die da
   sind, schlägt der Sync fehl und wird wiederholt (`SkipDryRunOnMissingResource`, `retry`).
 - `crds.keep: true`: Wird cert-manager entfernt, bleiben die CRDs und damit alle Zertifikate.
+- `ignoreDifferences` an den Webhook-Konfigurationen von cert-manager: `caBundle` setzt der
+  cainjector, zwei Regeln im `namespaceSelector` setzt der AKS-Admissions-Enforcer
+  (`kubernetes.azure.com/managedby`, `control-plane`). Ohne die Ausnahme stünde die Application
+  dauerhaft auf `OutOfSync`, und `selfHeal` würde gegen beide arbeiten. Der Enforcer wird nicht
+  abgeschaltet, weil er die System-Namespaces schützt.
 
 ### 4. external-dns mit `sync` und festem Owner
 

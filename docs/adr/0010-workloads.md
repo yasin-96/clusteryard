@@ -77,5 +77,6 @@ Speicherlimit (`-XX:MaxRAMPercentage=75`).
 - Jede neue Version des Backends braucht einen Pull Request in clusteryard mit dem neuen Tag.
 - Das Image läuft standardmäßig als root. Der Cluster erzwingt eine andere UID
   (`runAsUser: 10001`). Ein `USER` im Dockerfile wäre sauberer.
-- Ungeprüft bis zum ersten Aufbau: dass Cilium die Kubelet-Probes trotz Default Deny durchlässt
-  und die Envoy-Proxys wirklich in `envoy-gateway-system` laufen.
+- Bestätigt beim ersten Aufbau (2026-11-26): Cilium lässt die Kubelet-Probes trotz Default Deny
+  durch, die Envoy-Proxys laufen in `envoy-gateway-system`, und ein Pod aus einem anderen
+  Namespace erreicht das Backend nicht.

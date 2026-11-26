@@ -1,0 +1,14 @@
+# Values for the argo-cd chart (ADR 0005). Sized for the demo profile
+# (one B2ms apps node, ADR 0004). The system pool is tainted
+# CriticalAddonsOnly, so all pods land on the apps pool without a selector.
+#
+# Not exposed outside the cluster yet:
+#   kubectl -n argocd port-forward svc/argocd-server 8080:443
+#   kubectl -n argocd get secret argocd-initial-admin-secret -o jsonpath='{.data.password}' | base64 -d
+
+# No SSO yet: log in as admin with the initial secret above.
+dex:
+  enabled: false
+
+notifications:
+  enabled: false

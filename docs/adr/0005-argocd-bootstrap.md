@@ -45,6 +45,28 @@ Aufbau-Workflow vor dem Apply.
 Der Aufbau-Workflow prüft vor `infra/platform` mit `az aks show`, ob der Cluster existiert.
 Gibt es ihn nicht, wird das Modul mit einem Hinweis übersprungen.
 
+### 5. Umsetzung
+
+- Zwei Releases in `infra/platform`: `argo-cd` (Namespace `argocd`) und `argocd-apps` mit der
+  Wurzel-Application `root`. Die zweite hängt von der ersten ab, weil die CRD für
+  `Application` mit `argo-cd` kommt. Chart-Versionen sind als Variablen gepinnt.
+- `root` synchronisiert `gitops/apps` in diesem Repository (Branch `main`, rekursiv,
+  `prune` und `selfHeal`). Das Repository ist öffentlich, ArgoCD braucht keine Zugangsdaten.
+- Kein `resources-finalizer` an `root`: Beim Abbau löscht Terraform nur ArgoCD selbst, der
+  Cluster verschwindet danach ohnehin.
+- Dex und Notifications sind abgeschaltet. Zugriff per `kubectl port-forward` mit dem
+  initialen Admin-Passwort, bis es einen Ingress und SSO gibt.
+- Anmeldung: lokal `kubelogin -l azurecli` nach `az login`. In der Pipeline
+  `kubelogin -l workloadidentity` mit einem frischen GitHub-OIDC-Token vor Plan und Apply
+  (`TF_VAR_kubelogin_login`). Das Token hinter `azure/login` gilt nur wenige Minuten und ist
+  abgelaufen, wenn der Cluster nach etwa zehn Minuten steht; die Azure CLI könnte dann kein
+  Token für die AKS-API mehr holen.
+- kubelogin wird im Workflow per Version heruntergeladen und per SHA256 geprüft. Eine Action
+  dafür stünde nicht in der Allowlist (ADR 0007).
+- In Pull Requests steht `infra/platform` in `NO_PR_PLAN_MODULES` (nur `fmt` und `validate`).
+  Einen Plan vor der Freigabe gibt es nicht (ADR 0004); der Plan steht in der Zusammenfassung
+  des Laufs.
+
 ## Begründung
 
 - Weg A ist deklarativ, reproduzierbar und braucht kein zweites Werkzeug. Der Zustand von
@@ -78,3 +100,6 @@ Gibt es ihn nicht, wird das Modul mit einem Hinweis übersprungen.
   Aufbau-Workflow vor dem Apply.
 - Der Abbau muss `infra/platform` vor `infra/cluster` zerstören. Sonst bleibt ein State mit
   Helm-Releases zurück, deren Cluster nicht mehr existiert.
+- Wird der Cluster außerhalb des Workflows gelöscht, überspringt `down` das Modul
+  `infra/platform`, und sein State bleibt mit verwaisten Releases zurück. Abhilfe:
+  `terraform state rm` für beide Releases in `infra/platform`.

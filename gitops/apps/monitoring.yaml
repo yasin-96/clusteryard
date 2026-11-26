@@ -1,0 +1,130 @@
+# kube-prometheus-stack: Prometheus Operator, Prometheus, Grafana,
+# kube-state-metrics, node-exporter (ADR 0011). Sized for the single apps node.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: monitoring
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://prometheus-community.github.io/helm-charts
+    chart: kube-prometheus-stack
+    targetRevision: 93.2.2 # operator v0.95.2
+    helm:
+      releaseName: monitoring
+      valuesObject:
+        crds:
+          enabled: true
+
+        # Kubernetes control plane components that AKS manages and does not
+        # expose, and kube-proxy, which Cilium replaces. Their scrapes and
+        # alerts would only ever report "down".
+        kubeControllerManager:
+          enabled: false
+        kubeScheduler:
+          enabled: false
+        kubeEtcd:
+          enabled: false
+        kubeProxy:
+          enabled: false
+        defaultRules:
+          rules:
+            etcd: false
+            kubeControllerManager: false
+            kubeSchedulerAlerting: false
+            kubeSchedulerRecording: false
+            kubeProxy: false
+            alertmanager: false
+            windows: false
+
+        # No receiver yet (mail, chat), so no Alertmanager. Alerts are still
+        # evaluated and visible in Prometheus.
+        alertmanager:
+          enabled: false
+
+        prometheusOperator:
+          # Only validates PrometheusRules. Its certificate setup (patch jobs or
+          # cainjector) would add moving parts for little value here.
+          admissionWebhooks:
+            enabled: false
+          tls:
+            enabled: false
+          resources:
+            requests: { cpu: 50m, memory: 64Mi }
+            limits: { memory: 256Mi }
+
+        prometheus:
+          prometheusSpec:
+            # The cluster lives for hours; no disk, no long retention.
+            retention: 12h
+            scrapeInterval: 30s
+            resources:
+              requests: { cpu: 200m, memory: 512Mi }
+              limits: { memory: 1536Mi }
+            # Pick up ServiceMonitors, PodMonitors and rules from every namespace,
+            # not only those labelled for this Helm release.
+            serviceMonitorSelectorNilUsesHelmValues: false
+            podMonitorSelectorNilUsesHelmValues: false
+            ruleSelectorNilUsesHelmValues: false
+            probeSelectorNilUsesHelmValues: false
+            scrapeConfigSelectorNilUsesHelmValues: false
+
+        kube-state-metrics:
+          resources:
+            requests: { cpu: 20m, memory: 64Mi }
+            limits: { memory: 128Mi }
+
+        prometheus-node-exporter:
+          # Default tolerations include NoSchedule, so it also runs on the
+          # system node (taint CriticalAddonsOnly).
+          resources:
+            requests: { cpu: 10m, memory: 32Mi }
+            limits: { memory: 64Mi }
+
+        grafana:
+          # Reached with kubectl port-forward only (ADR 0011). The admin password
+          # is generated per cluster and never in Git:
+          #   kubectl -n monitoring get secret monitoring-grafana -o jsonpath='{.data.admin-password}' | base64 -d
+          testFramework:
+            enabled: false # Helm test pod, not needed with ArgoCD
+          resources:
+            requests: { cpu: 50m, memory: 128Mi }
+            limits: { memory: 256Mi }
+          dashboardProviders:
+            dashboardproviders.yaml:
+              apiVersion: 1
+              providers:
+                - name: clusteryard
+                  folder: clusteryard
+                  type: file
+                  disableDeletion: true
+                  options:
+                    path: /var/lib/grafana/dashboards/clusteryard
+          dashboards:
+            clusteryard:
+              jvm-micrometer:
+                gnetId: 4701 # JVM (Micrometer), grafana.com
+                revision: 10
+                datasource:
+                  - name: DS_PROMETHEUS
+                    value: Prometheus
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: monitoring
+  # The Grafana chart generates a random admin password on every render. Keep
+  # the one created at install instead of rotating it on every sync.
+  ignoreDifferences:
+    - kind: Secret
+      name: monitoring-grafana
+      namespace: monitoring
+      jsonPointers:
+        - /data/admin-password
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - CreateNamespace=true
+      - ServerSideApply=true # the CRDs are too large for client-side apply annotations
+      - RespectIgnoreDifferences=true

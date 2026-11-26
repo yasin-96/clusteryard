@@ -1,0 +1,29 @@
+# Example alerts for a workload (ADR 0011). Visible in Prometheus under
+# Alerts; there is no Alertmanager to send them yet.
+apiVersion: monitoring.coreos.com/v1
+kind: PrometheusRule
+metadata:
+  name: backend
+  namespace: backend
+spec:
+  groups:
+    - name: backend
+      rules:
+        - alert: BackendDown
+          expr: up{namespace="backend", service="backend"} == 0 or absent(up{namespace="backend", service="backend"})
+          for: 2m
+          labels:
+            severity: critical
+          annotations:
+            summary: Backend is not reachable for Prometheus
+            description: No successful scrape of backend /actuator/prometheus for 2 minutes.
+        - alert: BackendHeapHigh
+          expr: |
+            sum(jvm_memory_used_bytes{namespace="backend", area="heap"})
+              / sum(jvm_memory_max_bytes{namespace="backend", area="heap"} > 0) > 0.9
+          for: 10m
+          labels:
+            severity: warning
+          annotations:
+            summary: Backend heap above 90 %
+            description: "Heap usage is {{ $value | humanizePercentage }} of the maximum for 10 minutes."

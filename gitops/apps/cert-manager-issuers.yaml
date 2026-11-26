@@ -1,0 +1,28 @@
+# ClusterIssuers for Let's Encrypt (ADR 0008). Separate from cert-manager: they
+# need its CRDs. Until cert-manager is installed the sync fails and is retried.
+apiVersion: argoproj.io/v1alpha1
+kind: Application
+metadata:
+  name: cert-manager-issuers
+  namespace: argocd
+spec:
+  project: default
+  source:
+    repoURL: https://github.com/yasin-96/clusteryard.git
+    targetRevision: main
+    path: gitops/platform/cert-manager-issuers
+  destination:
+    server: https://kubernetes.default.svc
+    namespace: cert-manager
+  syncPolicy:
+    automated:
+      prune: true
+      selfHeal: true
+    syncOptions:
+      - SkipDryRunOnMissingResource=true # ClusterIssuer CRD may not exist yet
+    retry:
+      limit: 10
+      backoff:
+        duration: 30s
+        factor: 2
+        maxDuration: 5m

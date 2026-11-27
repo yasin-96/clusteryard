@@ -1,5 +1,6 @@
 # Default deny for ingress, enforced by Cilium (ADR 0004). Only the Envoy proxies
-# of the Gateway (namespace envoy-gateway-system) may reach the app port.
+# of the Gateway (namespace envoy-gateway-system) and Prometheus (namespace
+# monitoring, ADR 0011) may reach the app port.
 # Kubelet probes come from the node and are not affected.
 apiVersion: networking.k8s.io/v1
 kind: NetworkPolicy
@@ -25,5 +26,23 @@ spec:
         - namespaceSelector:
             matchLabels:
               kubernetes.io/metadata.name: envoy-gateway-system
+      ports:
+        - port: http
+---
+apiVersion: networking.k8s.io/v1
+kind: NetworkPolicy
+metadata:
+  name: allow-from-monitoring
+  namespace: backend
+spec:
+  podSelector:
+    matchLabels:
+      app.kubernetes.io/name: backend
+  policyTypes: ["Ingress"]
+  ingress:
+    - from:
+        - namespaceSelector:
+            matchLabels:
+              kubernetes.io/metadata.name: monitoring
       ports:
         - port: http

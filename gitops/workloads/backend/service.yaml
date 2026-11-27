@@ -3,6 +3,8 @@ kind: Service
 metadata:
   name: backend
   namespace: backend
+  labels:
+    app.kubernetes.io/name: backend # selected by the ServiceMonitor
 spec:
   selector:
     app.kubernetes.io/name: backend

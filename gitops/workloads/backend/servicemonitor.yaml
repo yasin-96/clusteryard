@@ -1,0 +1,21 @@
+# Prometheus scrapes /actuator/prometheus through the Service (ADR 0011).
+# The path is not routed publicly (ADR 0010); the NetworkPolicy lets the
+# monitoring namespace in.
+apiVersion: monitoring.coreos.com/v1
+kind: ServiceMonitor
+metadata:
+  name: backend
+  namespace: backend
+spec:
+  selector:
+    matchLabels:
+      app.kubernetes.io/name: backend
+  endpoints:
+    - port: http
+      path: /actuator/prometheus
+      interval: 30s
+      relabelings:
+        # The JVM (Micrometer) dashboard filters by an "application" label,
+        # which Spring Boot does not set by default.
+        - targetLabel: application
+          replacement: backend

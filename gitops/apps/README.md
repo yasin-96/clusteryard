@@ -11,6 +11,7 @@ Only `.yaml`, `.yml` and `.json` files are applied; this README is ignored.
 | `external-dns` | DNS records in `k8s.clusteryard.dev` for HTTPRoutes, ingresses and services | 0008, 0009 |
 | `envoy-gateway` | Gateway API implementation (Envoy) | 0009 |
 | `gateway` | Gateway `public`, wildcard certificate, HTTP-to-HTTPS redirect | 0009 |
+| `monitoring` | Prometheus, Grafana, kube-state-metrics, node-exporter (kube-prometheus-stack) | 0011 |
 | `backend` | Spring Boot backend from `three-tier-app-azure` at `backend.k8s.clusteryard.dev/api` | 0010 |
 
 Plain manifests that belong to a component (not Applications) live in
